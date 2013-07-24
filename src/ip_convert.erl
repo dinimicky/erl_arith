@@ -32,35 +32,42 @@ covert_compress_in_ipv6(IPv6noIPv4)->
 	case re:split(IPv6noIPv4, "::", [{return, list}]) of
 		[IPv6noIPv4] -> {ok, IPv6noIPv4};
 		[IPv6Part1, IPv6Part2] ->
-			IPv6Part1List = re:split(IPv6Part1, ":", [{return, list}]),
-			IPv6Part2List = re:split(IPv6Part2, ":", [{return, list}]),
+			case IPv6Part1 of 
+				[] -> IPv6Part1List = [];
+				_ -> IPv6Part1List = re:split(IPv6Part1, ":", [{return, list}])
+			end,
+			case IPv6Part2 of 
+				[] -> IPv6Part2List = [];
+				_ -> IPv6Part2List = re:split(IPv6Part2, ":", [{return, list}])
+			end,			
 			ZeroNum = 8 - length(IPv6Part1List) - length(IPv6Part2List),
-			{ok, IPv6Part1++lists:duplicate(ZeroNum, ":0")++":"++IPv6Part2};
+			case IPv6Part1List of
+				[] ->
+%% 					io:format("3:~p~n", [lists:concat(lists:duplicate(ZeroNum, "0:"))++IPv6Part2]),
+					case IPv6Part2 of
+						[] ->{ok, lists:concat(lists:duplicate(ZeroNum-1, "0:"))++"0"};
+						_ -> {ok, lists:concat(lists:duplicate(ZeroNum, "0:"))++IPv6Part2}
+					end;
+				_ -> 
+%% 					io:format("4:~p~n", [IPv6Part1++lists:concat(lists:duplicate(ZeroNum, ":0"))++":"++IPv6Part2]),
+					case IPv6Part2List of
+						[] -> {ok, IPv6Part1++lists:concat(lists:duplicate(ZeroNum, ":0"))};
+						_ -> {ok, IPv6Part1++lists:concat(lists:duplicate(ZeroNum, ":0"))++":"++IPv6Part2}
+					end
+			end;
 		__MultiCompress -> {error, multi_ipv6_compressflag}
 	end.
 
 convert_basic_ipv6(IpStr) ->
-	IPv6List = re:split(IpStr, ":", [{return, list}]),
-	IPv6GroupTemplate = "^[0-9a-fA-F.]{1,4}$",
-	IsIPv6Format = 
-	lists:foldl(fun (Group, Result) ->						
-						 case Group of 	
-							 [] -> Result and true;	
-							 Group ->
-								 case re:run(Group, IPv6GroupTemplate, [global]) of				
-									 {match, _} -> Result and true;
-									 nomatch -> Result and false
-								 end
-						 end
-				end, true, IPv6List),
-	case IsIPv6Format of
-		true -> 
-			IPv6Addr = [erlang:list_to_integer(Number, 16)||Number<-IPv6List],
-			if
-				length(IPv6Addr) =:= 8 -> {ipv6, list_to_tuple(IPv6Addr)};
-				true -> {error, wrong_ipv6_format}
-			end;
-		false -> {error, wrong_ipv6_format}
+	IPv6GroupTemplate = "([0-9a-fA-F.]{1,4})",
+	IPv6RE = "^"++lists:duplicate(7, IPv6GroupTemplate++":")++IPv6GroupTemplate++"$",
+%% 	io:format("~p~n", [IPv6RE]),
+	case re:run(IpStr, IPv6RE, [{capture, all_but_first, list}]) of
+		{match, IPv6StrList} ->
+%% 			io:format("~p~n", [IPv6StrList]),
+			IPv6List = [list_to_integer(Number,16)||Number<-IPv6StrList],
+			{ipv6, list_to_tuple(IPv6List)};
+		nomatch -> {error, wrong_ipv6_format}
 	end.
 %%============================================================= 
 ip_str2tuple(DirtyIpStr) when is_list(DirtyIpStr) ->
