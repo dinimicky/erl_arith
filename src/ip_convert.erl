@@ -1,5 +1,68 @@
 -module(ip_convert).
 -compile(export_all).
+
+ip_str2tuple2(DirtyIpStr) when is_list(DirtyIpStr) ->
+	IpStr = re:replace(DirtyIpStr, "\\s", "", [global,{return, list}]),
+	IPv4Template = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])",
+	IPv4RE = lists:concat(lists:duplicate(3, IPv4Template++"\\."))++IPv4Template,
+	case re:run(IpStr, "^"++IPv4RE++"$", [global, {capture, all_but_first, list}]) of
+		{match, [[A, B, C, D]]} -> {ipv4, {list_to_integer(A), list_to_integer(B), list_to_integer(C), list_to_integer(D)}};
+		{match, _MultiIP} -> {error, multi_ipv4_addresses};
+		nomatch -> 
+			IPv6noIPv4= convert_ipv4_in_ipv6(IpStr, IPv4RE),
+			case covert_compress_in_ipv6(IPv6noIPv4) of
+				{error, Reason} -> {error, Reason};
+				{ok, IPv6noCompress} -> convert_basic_ipv6(IPv6noCompress)
+			end	
+	end;
+ip_str2tuple2(_IpStr) ->
+	{error, input_not_string}.
+convert_ipv4_in_ipv6(IpStr, IPv4RE)->
+	case re:run(IpStr, ":"++IPv4RE++"$", [{capture, all_but_first}]) of						   
+		nomatch -> IpStr;
+		{match, [{S1, _L1}|_RestGroups]=Groups} -> 
+%% 			io:format("~p~n", [Groups]),
+			IPv6Part = string:sub_string(IpStr, 1, S1),
+			IPGroups = [erlang:list_to_integer(string:substr(IpStr, S+1, L))||{S,L}<-Groups],
+			
+			[G1,G2,G3,G4]=IPGroups,
+			IPv6Part ++ integer_to_list(G1*256+G2, 16) ++":"++integer_to_list(G3*256+G4,16)
+	end.
+covert_compress_in_ipv6(IPv6noIPv4)->
+	case re:split(IPv6noIPv4, "::", [{return, list}]) of
+		[IPv6noIPv4] -> {ok, IPv6noIPv4};
+		[IPv6Part1, IPv6Part2] ->
+			IPv6Part1List = re:split(IPv6Part1, ":", [{return, list}]),
+			IPv6Part2List = re:split(IPv6Part2, ":", [{return, list}]),
+			ZeroNum = 8 - length(IPv6Part1List) - length(IPv6Part2List),
+			{ok, IPv6Part1++lists:duplicate(ZeroNum, ":0")++":"++IPv6Part2};
+		__MultiCompress -> {error, multi_ipv6_compressflag}
+	end.
+
+convert_basic_ipv6(IpStr) ->
+	IPv6List = re:split(IpStr, ":", [{return, list}]),
+	IPv6GroupTemplate = "^[0-9a-fA-F.]{1,4}$",
+	IsIPv6Format = 
+	lists:foldl(fun (Group, Result) ->						
+						 case Group of 	
+							 [] -> Result and true;	
+							 Group ->
+								 case re:run(Group, IPv6GroupTemplate, [global]) of				
+									 {match, _} -> Result and true;
+									 nomatch -> Result and false
+								 end
+						 end
+				end, true, IPv6List),
+	case IsIPv6Format of
+		true -> 
+			IPv6Addr = [erlang:list_to_integer(Number, 16)||Number<-IPv6List],
+			if
+				length(IPv6Addr) =:= 8 -> {ipv6, list_to_tuple(IPv6Addr)};
+				true -> {error, wrong_ipv6_format}
+			end;
+		false -> {error, wrong_ipv6_format}
+	end.
+%%============================================================= 
 ip_str2tuple(DirtyIpStr) when is_list(DirtyIpStr) ->
   IpStr = re:replace(DirtyIpStr, "\\s", "", [global,{return, list}]),
 	IPv4Template = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])",
