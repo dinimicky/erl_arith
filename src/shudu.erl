@@ -98,9 +98,9 @@ test()->
 	Units = dict:from_list(?UNITS),
 	Peers = dict:from_list(?PEERS),
 	io:format("~p~n~p~n~p~n~p~n~p~n~p~n", [?SQUARES,?UNITLISTS,Units,Peers,dict:fetch("A1", Units), dict:fetch("A1", Peers)]).
-test_grid_values()->
+test_parse_grid0()->
 	Grid = "003020600900305001001806400008102900700000008006708200002609500800203009005010300",
-	grid_values(Grid).
+	parse_grid(Grid).
 
 test_parse_grid()->
 	parse_grid(?GRID).
