@@ -20,18 +20,34 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([parse_grid/1]).
-
+-export([parse_grid/1, display/1,tryOnce/4]).
+search(false)->
+	false;
+search(ValuesDict)->
+%% 	io:format("search:~p~n", [ValuesDict]),
+	case dict:fold(fun(_S,D, AccIn) -> AccIn and (length(D)==1) end, true, ValuesDict) of
+		true -> display(ValuesDict);
+		false -> 
+			MinS = dict:fold(fun(S, D, AccIn) -> 
+									 if 
+										 length(D) > 1, length(D) < AccIn -> S;
+										 true -> AccIn
+									 end
+							 end, 10, ValuesDict),
+			[spawn(?MODULE, tryOnce, [self(), ValuesDict, MinS, D]) ||D<-dict:fetch(MinS, ValuesDict)]
+	end.
 display(ValuesDict)->
 	Width = 1+lists:max([length(dict:fetch(S, ValuesDict))||S<-?SQUARES]),
 	Line = string:copies("+"++string:copies("-", 3*Width),3)++"+",
 	Center = fun(Elem) ->
 					 Head = (Width-length(Elem)) div 2,
-					 Tail = Width - length(Elem) - Head,	  
+					 Tail = Width - length(Elem) - Head,
+%% 					 io:format("Elem=~p;Head=~p;Tail=~p~n", [Elem, Head, Tail]),
 					 string:chars($ , Head)++Elem++string:chars($ , Tail)	  
 			 end,
 	StringEle = fun(R, C) ->
-						Elem = dict:fetch([R,C], get(values)),
+						Elem = dict:fetch([R,C], ValuesDict),
+%% 						io:format("Elem=~p;Index=~p~n", [Elem, [R,C]]),
 						case lists:member(C, "36") of
 							true -> Center(Elem)++"|";
 							false -> Center(Elem)
@@ -44,13 +60,13 @@ display(ValuesDict)->
 						   false -> Row++"\n"   
 					   end
 			   end,
+%% 	io:format("Width=~p~n", [Width]),
 	ValStr = lists:foldl(fun(R, AccIn) -> Row = PrintRow(R), AccIn++Row end, [], ?ROWS),
 	lists:foldl(fun(R, ok)-> io:format("~p~n", [R]) end, ok, string:tokens(ValStr, "\n")),
 	ValStr.
 parse_grid(Grid)->
-	put(peers, dict:from_list(?PEERS)),
-	put(units, dict:from_list(?UNITS)),
 	Values = [{S, ?DIGITS}||S<-?SQUARES],
+	init_process_global_var(),
 	put(values, dict:from_list(Values)),
 	dict:map(fun(S,D)->case lists:member(D, ?DIGITS) of
 						   true -> assign(S, D);
@@ -62,6 +78,15 @@ parse_grid(Grid)->
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+tryOnce(Parent, ValuesDict, S, D)->
+	init_process_global_var(),
+	put(values, ValuesDict),
+	Res = try assign(S,D) catch throw:{error, false} ->false end,
+	search(Res).
+
+init_process_global_var()->
+	put(peers, dict:from_list(?PEERS)),
+	put(units, dict:from_list(?UNITS)).
 grid_values(Grid)->
 	Chars = [C||C<-Grid, lists:member(C, ?DIGITS++"0.")],
 	dict:from_list(lists:zip(?SQUARES, Chars)).
