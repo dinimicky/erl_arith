@@ -61,8 +61,6 @@ parse_grid(Grid)->
 									 false -> AccIn
 								 end
 			  end, ValuesDict, grid_values(Grid)).
-search(false)->
-	false;
 search(ValuesDict)->
 	case lists:all(fun(S)-> length(dict:fetch(S, ValuesDict))=:=1 end, ?SQUARES) of
 %% 	case dict:fold(fun(_S,D,AccIn)-> AccIn and (length(D) =:= 1) end, true, ValuesDict) of
@@ -78,13 +76,12 @@ search(ValuesDict)->
 								  true -> AccIn
 							  end
 					  end, {[], 10}, ValuesDict),
-			some([search(try 
-							 assign(ValuesDict, MinS, D) 
+			some([try search(assign(ValuesDict, MinS, D)) 
 						 catch 
 							 throw:{error, false}->
 %% 								 io:format("~p~n", [False]),
 								 false 
-						 end)||D<-dict:fetch(MinS, ValuesDict)])
+						 end||D<-dict:fetch(MinS, ValuesDict)])
 	end.
 	
 %% ====================================================================
