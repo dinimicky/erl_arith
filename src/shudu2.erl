@@ -20,7 +20,11 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([parse_grid/1, display/1,search/1]).
+-export([parse_grid/1, display/1,search/1, solve/1]).
+solve(Grid)->
+	init_process_global_var(),
+	ValueDict = parse_grid(Grid),
+	search(ValueDict).
 display(ValuesDict)->
 	Width = 1+lists:max([length(dict:fetch(S, ValuesDict))||S<-?SQUARES]),
 	Line = string:copies("+"++string:copies("-", 3*Width),3)++"+",
@@ -51,32 +55,48 @@ display(ValuesDict)->
 	ValStr.
 parse_grid(Grid)->
 	Values = [{S, ?DIGITS}||S<-?SQUARES],
-	init_process_global_var(),
 	ValuesDict = dict:from_list(Values),
 	dict:fold(fun(S,D, AccIn) -> case lists:member(D, ?DIGITS) of
 									 true ->  assign(AccIn, S, D);
 									 false -> AccIn
 								 end
 			  end, ValuesDict, grid_values(Grid)).
+search(false)->
+	false;
 search(ValuesDict)->
-	case dict:fold(fun(_S,D,AccIn)-> AccIn and (length(D) =:= 1) end, true, ValuesDict) of
+	case lists:all(fun(S)-> length(dict:fetch(S, ValuesDict))=:=1 end, ?SQUARES) of
+%% 	case dict:fold(fun(_S,D,AccIn)-> AccIn and (length(D) =:= 1) end, true, ValuesDict) of
 		true -> ValuesDict;
 		false ->
-			{MinS, _MinL} = 
+			
+%% 			{_MinL, MinS} = lists:min([{L,S}||S<-?SQUARES, (L=length(dict:fetch(S, ValuesDict)))>1]),
+			{MinS, _MinL} =
 			dict:fold(fun(S,D, {_S1, L}=AccIn)->
 							  DL = length(D),
 							  if 
 								  DL>1, DL<L -> {S, DL};
 								  true -> AccIn
 							  end
-					  end, {[], 10}, ValuesDict)
-			
+					  end, {[], 10}, ValuesDict),
+			some([search(try 
+							 assign(ValuesDict, MinS, D) 
+						 catch 
+							 throw:{error, false}->
+%% 								 io:format("~p~n", [False]),
+								 false 
+						 end)||D<-dict:fetch(MinS, ValuesDict)])
 	end.
 	
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
-
+some([])->
+	false;
+some([H|T]=_ValuesDicts)->
+	case H of
+		false -> some(T);
+		ValuesDict -> ValuesDict
+	end.
 
 init_process_global_var()->
 	put(peers, dict:from_list(?PEERS)),
@@ -90,21 +110,27 @@ assign(ValuesDict, S, D)->
 	lists:foldl(fun(D2, AccIn) -> eliminate(AccIn,S,D2) end, ValuesDict, Other_values).
 
 eliminate(ValuesDict, S, D)->
-	case lists:member(D, dict:fetch(S, ValuesDict)) of
+	S_V = dict:fetch(S, ValuesDict),
+	case lists:member(D, S_V) of
 		false -> ValuesDict;
 		true ->
-			ValuesDict1 = dict:update(S, fun(VS) -> lists:delete(D, VS) end, ValuesDict),
+			NewValue = lists:delete(D, S_V),
+			ValuesDict1 = dict:store(S, NewValue, ValuesDict),
 			ValuesDict2 = 
-			case dict:fetch(S, ValuesDict1) of
-				[] -> throw({error, false});
+			case NewValue of
+				[] -> 
+%% 					io:format("throw Error for L1~n"),
+					throw({error, false});
 				[D2] -> lists:foldl(fun(S2, AccIn)->eliminate(AccIn,S2,D2) end, ValuesDict1, dict:fetch(S, get(peers)));
 				_ -> ValuesDict1
 			end,
 			lists:foldl(fun(U, AccIn)-> 
 								case [S3||S3<-U,lists:member(D, dict:fetch(S3, AccIn))] of
-									[] -> throw({error, false});
-									[SS3] -> assign(ValuesDict2, SS3, D);
-									_ -> ValuesDict2
+									[] -> 
+%% 										io:format("throw Error for L2~n"),
+										throw({error, false});
+									[SS3] -> assign(AccIn, SS3, D);
+									_ -> AccIn
 								end
 						end, ValuesDict2, dict:fetch(S, get(units)))
 	end.
@@ -119,3 +145,5 @@ test_parse_grid0()->
 
 test_parse_grid()->
 	display(parse_grid(?GRID)).
+test_solve()->
+	solve(?GRID).
