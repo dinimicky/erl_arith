@@ -68,20 +68,20 @@ search(ValuesDict)->
 		false ->
 			
 %% 			{_MinL, MinS} = lists:min([{L,S}||S<-?SQUARES, (L=length(dict:fetch(S, ValuesDict)))>1]),
-			{MinS, _MinL} =
-			dict:fold(fun(S,D, {_S1, L}=AccIn)->
+			{MinS, {MinDs, _MinL}} =
+			dict:fold(fun(S,D, {_S1, {_OldD, L}}=AccIn)->
 							  DL = length(D),
 							  if 
-								  DL>1, DL<L -> {S, DL};
+								  DL>1, DL<L -> {S, {D,DL}};
 								  true -> AccIn
 							  end
-					  end, {[], 10}, ValuesDict),
+					  end, {[], {[], 10}}, ValuesDict),
 			some([try search(assign(ValuesDict, MinS, D)) 
 						 catch 
 							 throw:{error, false}->
 %% 								 io:format("~p~n", [False]),
 								 false 
-						 end||D<-dict:fetch(MinS, ValuesDict)])
+						 end||D<-MinDs])
 	end.
 	
 %% ====================================================================
@@ -136,9 +136,9 @@ test()->
 	Units = dict:from_list(?UNITS),
 	Peers = dict:from_list(?PEERS),
 	io:format("~p~n~p~n~p~n~p~n~p~n~p~n", [?SQUARES,?UNITLISTS,Units,Peers,dict:fetch("A1", Units), dict:fetch("A1", Peers)]).
-test_parse_grid0()->
-	Grid = "003020600900305001001806400008102900700000008006708200002609500800203009005010300",
-	display(parse_grid(Grid)).
+test_solve0()->
+	Grid = "600000803040700000000000000000504070300200000106000000020000050000080600000010000",
+	solve(Grid).
 
 test_parse_grid()->
 	display(parse_grid(?GRID)).
