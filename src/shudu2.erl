@@ -24,7 +24,10 @@
 solve(Grid)->
 	init_process_global_var(),
 	ValueDict = parse_grid(Grid),
-	search(ValueDict).
+	try search(ValueDict) 
+	catch
+		throw:{_, Result} -> Result
+	end.
 display(ValuesDict)->
 	Width = 1+lists:max([length(dict:fetch(S, ValuesDict))||S<-?SQUARES]),
 	Line = string:copies("+"++string:copies("-", 3*Width),3)++"+",
@@ -62,9 +65,13 @@ parse_grid(Grid)->
 								 end
 			  end, ValuesDict, grid_values(Grid)).
 search(ValuesDict)->
-	case lists:all(fun(S)-> length(dict:fetch(S, ValuesDict))=:=1 end, ?SQUARES) of
+	case lists:all(fun(S)->case dict:fetch(S, ValuesDict) of
+							   [_] -> true;
+							   _ -> false
+						   end
+				   end, ?SQUARES) of
 %% 	case dict:fold(fun(_S,D,AccIn)-> AccIn and (length(D) =:= 1) end, true, ValuesDict) of
-		true -> ValuesDict;
+		true -> throw({result, ValuesDict});
 		false ->
 			
 %% 			{_MinL, MinS} = lists:min([{L,S}||S<-?SQUARES, (L=length(dict:fetch(S, ValuesDict)))>1]),
@@ -76,24 +83,30 @@ search(ValuesDict)->
 								  true -> AccIn
 							  end
 					  end, {[], {[], 10}}, ValuesDict),
-			some([try search(assign(ValuesDict, MinS, D)) 
-						 catch 
-							 throw:{error, false}->
-%% 								 io:format("~p~n", [False]),
-								 false 
-						 end||D<-MinDs])
+%% 			io:format("search MinS=~p;MinDs=~p~n", [MinS,MinDs]),
+			lists:foreach(fun(D)-> try search(assign(ValuesDict, MinS, D)) 
+								   catch throw:{error, false}->false 
+								   end 
+						  end, MinDs)
+%% 			some([try search(assign(ValuesDict, MinS, D)) 
+%% 						 catch 
+%% 							 throw:{error, false}->
+%% %% 								 io:format("~p~n", [False]),
+%% 								 false;
+%% 							 throw:{}
+%% 						 end||D<-MinDs])
 	end.
 	
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
-some([])->
-	false;
-some([H|T]=_ValuesDicts)->
-	case H of
-		false -> some(T);
-		ValuesDict -> ValuesDict
-	end.
+%% some([])->
+%% 	false;
+%% some([H|T]=_ValuesDicts)->
+%% 	case H of
+%% 		false -> some(T);
+%% 		ValuesDict -> ValuesDict
+%% 	end.
 
 init_process_global_var()->
 	put(peers, dict:from_list(?PEERS)),
