@@ -24,10 +24,13 @@
 solve(Grid)->
 	init_process_global_var(),
 	ValueDict = parse_grid(Grid),
-	try search(ValueDict) 
-	catch
-		throw:{_, Result} -> Result
-	end.
+	FinalRes =
+		try search(ValueDict) 
+		catch
+			throw:{_, Result} -> Result
+		end,
+	erase(),
+	FinalRes.
 display(ValuesDict)->
 	Width = 1+lists:max([length(dict:fetch(S, ValuesDict))||S<-?SQUARES]),
 	Line = string:copies("+"++string:copies("-", 3*Width),3)++"+",
