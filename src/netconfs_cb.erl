@@ -11,9 +11,12 @@
 -record(buf_idx, {cm, id}).
 -record(buf_rec, {idx, ctx}).
 -define(Template_List, ["hello.xml", 
-						"rpc_ok_reply.xml", 
+						"rpc_edit-config_reply.xml", 
 						"rpc_action_reply.xml",
-						"rpc_get_reply.xml"
+						"rpc_get_reply.xml",
+						"rpc_get-config_reply.xml",
+						"rpc_close-channel_reply.xml",
+						"rpc_kill-channel_reply.xml"
 					   ]).
 -define(Template_Dir, "./netconf_template/").
 -include_lib("xmerl/include/xmerl.hrl").
@@ -27,16 +30,14 @@ subsystem_spec()->
 	{"netconf", {?MODULE, [?Template_Dir]}}.
 subsystem_spec(TemplateDir) ->
     {"netconf", {?MODULE, [TemplateDir]}}.
-init([TempDir]) ->
-	RestFiles = filelib:fold_files(TempDir, "xml$", false, fun(FileName, AccIn)-> lists:delete(FileName, AccIn) end, ?Template_List),
+init(TempDir) ->
+	RestFiles = filelib:fold_files(TempDir, "xml$", false, fun(FileName, AccIn)-> lists:delete(filename:basename(FileName), AccIn) end, ?Template_List),
 	case RestFiles of
-		[] -> ets:new(netconf, [named_table, protected]),
-			  {ok, #state{n = 1, buf_tab=netconf}};
+		[] -> {ok, #state{n = 1, buf_tab=netconf}};
 		_ -> {stop, {missing_tempaltes, RestFiles}}
 	end.
 
 handle_msg({ssh_channel_up, ChannelId, ConnectionManager}, #state{buf_tab = Buf_tab} = State) ->
-	ets:insert(Buf_tab, #buf_rec{idx = #buf_idx{cm = ConnectionManager, id = ChannelId}, ctx = <<>>}),
     {ok, State}.
 
 handle_ssh_msg({ssh_cm, CM, {data, ChannelId, 0, Data}}, #state{n = N, buf_tab=Buf_tab} = State) ->
@@ -46,13 +47,16 @@ handle_ssh_msg({ssh_cm, CM, {data, ChannelId, 0, Data}}, #state{n = N, buf_tab=B
 		{finished, Netconf} -> 
 			true = ets:update_element(Buf_tab, Key, {2, <<>>}),
 			{RpcElement, _Rest} = xmerl_scan:string(Netconf),
+			#xmlAttribute{value = Msg_ID} = xmerl_xpath:string("@message-id", RpcElement),
 			case xmerl_xpath:string("/rpc/node()", RpcElement) of
 				[#xmlElement{name = Method}] -> 
-					{ok, Reply}=file:read_file(?Template_Dir++"rpc_"++erlang:atom_to_list(Method)++"_reply.xml"),
+					{ok, OrigReply}=file:read_file(?Template_Dir++"rpc_"++erlang:atom_to_list(Method)++"_reply.xml"),
+					Reply = re:replace(OrigReply, "message\-id=\"[0-9]+\"", "message-id=\""++ Msg_ID ++"\""),
 					ssh_connection:send(CM, ChannelId, Reply),
 					if
 						Method =:= 'close-session';Method =:= 'kill-session'  ->
-							ssh_connection:send_eof(CM, ChannelId);
+							ssh_connection:send_eof(CM, ChannelId),
+							ets:delete(Buf_tab, Key);
 						true -> ok
 					end;
 				[] -> [_Hello] = xmerl_xpath:string("/hello", RpcElement),
@@ -61,17 +65,8 @@ handle_ssh_msg({ssh_cm, CM, {data, ChannelId, 0, Data}}, #state{n = N, buf_tab=B
 			end;
 		{unfinished, NewData} -> true = ets:update_element(Buf_tab, Key, {2, NewData})
 	end,
-    M = N - size(Data),
-    case M > 0 of
-	true ->
-	   ssh_connection:send(CM, ChannelId, Data),
-	   {ok, State#state{n = M}};
-	false ->
-	   <<SendData:N/binary, _/binary>> = Data,
-           ssh_connection:send(CM, ChannelId, SendData),
-           ssh_connection:send_eof(CM, ChannelId),
-	   {stop, ChannelId, State}
-    end;
+	{ok, State};
+
 handle_ssh_msg({ssh_cm, _ConnectionManager,
 		{data, _ChannelId, 1, Data}}, State) ->
     error_logger:format(standard_error, " ~p~n", [binary_to_list(Data)]),
